@@ -114,7 +114,8 @@ along with this software (see the LICENSE.md file). If not, see
                 <fo:table-body>
                     <#list invoiceList as invoice>
                         <fo:table-row font-size="${tableFontSize}" border-bottom="thin solid black">
-                            <fo:table-cell padding="${cellPadding}"><fo:block text-align="left">${invoice.invoiceId}</fo:block></fo:table-cell>
+                            <#-- SSS customization (card 981): customer-facing invoice number (basalt-extended pseudoId), sysid fallback -->
+                            <fo:table-cell padding="${cellPadding}"><fo:block text-align="left"><@encodeText (invoice.pseudoId)!invoice.invoiceId/></fo:block></fo:table-cell>
                             <fo:table-cell padding="${cellPadding}"><fo:block text-align="left"><@encodeText invoice.otherPartyOrderId!invoice.referenceNumber!" "/></fo:block></fo:table-cell>
                             <fo:table-cell padding="${cellPadding}"><fo:block text-align="left">${ec.l10n.format(invoice.invoiceDate, dateFormat)}</fo:block></fo:table-cell>
                             <fo:table-cell padding="${cellPadding}"><fo:block text-align="left">${ec.l10n.format(invoice.dueDate, dateFormat)}</fo:block></fo:table-cell>
