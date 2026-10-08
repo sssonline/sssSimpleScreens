@@ -24,6 +24,11 @@ along with this software (see the LICENSE.md file). If not, see
     <transition name="findRequest"><default-response url="//${appRoot}/Request/FindRequest"/></transition>
 
     <transition name="orderDetail"><default-response url="//${appRoot}/Order/OrderDetail"/></transition>
+    <!-- Aspen card 1131: the customer-side links go to the Aspen sales screens; the stock Order/Shipment paths
+         above don't exist in the Aspen app, so those links rendered disabled -->
+    <transition name="findSalesOrder"><default-response url="//${appRoot}/Sales/SalesOrder/FindOrder"/></transition>
+    <transition name="findOutgoingShipment"><default-response url="//${appRoot}/Shipping/Shipment/FindOutgoingShipment"/></transition>
+    <transition name="salesOrderDetail"><default-response url="//${appRoot}/Sales/SalesOrder/OrderDetail"/></transition>
     <transition name="editInvoice"><default-response url="//${appRoot}/Accounting/Invoice/EditInvoice"/></transition>
     <transition name="editPayment"><default-response url="//${appRoot}/Accounting/Payment/EditPayment"/></transition>
 
@@ -67,9 +72,13 @@ along with this software (see the LICENSE.md file). If not, see
             <econdition field-name="toPartyId" from="partyId"/></entity-find-count>
 
         <!-- sales/receivable/incoming -->
+        <!-- Aspen card 1131: this party is never an internal org (refused above), so orders where it is the customer
+             are our sales orders: count them by the one sales definition (booked = Placed + Completed; open = Placed).
+             The purchase/payable blocks below (party as vendor) keep their purchase order statuses. -->
+        <service-call name="sssonline.basalt.Order.OrderServices.get#SalesOrderStatusInfo" out-map="salesStatusInfo" out-map-add-to-existing="false"/>
         <entity-find entity-name="mantle.order.OrderHeaderAndPartSummary" list="ordersTotalList">
             <econdition field-name="customerPartyId" from="partyId"/>
-            <econdition field-name="partStatusId" operator="in" value="OrderPlaced,OrderProcessing,OrderApproved,OrderSent,OrderCompleted"/>
+            <econdition field-name="partStatusId" operator="in" from="salesStatusInfo.bookedStatusIdList"/>
             <select-field field-name="currencyUomId,orderCount,partTotal"/>
         </entity-find>
         <entity-find entity-name="mantle.account.invoice.InvoiceSummary" list="invoicesTotalList">
@@ -135,8 +144,8 @@ along with this software (see the LICENSE.md file). If not, see
     </actions>
     <widgets>
         <link url="findRequest" text="Requests (${requestCount})" parameter-map="[partyId:partyId]" condition="requestCount"/>
-        <link url="findOrder" text="Sales Orders (${customerOrderPartCount})" parameter-map="[customerPartyId:partyId]" condition="customerOrderPartCount"/>
-        <link url="findShipment" text="Shipments To (${toShipmentCount})" parameter-map="[toPartyId:partyId]" condition="toShipmentCount"/>
+        <link url="findSalesOrder" text="Sales Orders (${customerOrderPartCount})" parameter-map="[customerPartyId:partyId]" condition="customerOrderPartCount"/>
+        <link url="findOutgoingShipment" text="Shipments To (${toShipmentCount})" parameter-map="[toPartyId:partyId]" condition="toShipmentCount"/>
         <link url="findInvoice" text="Invoices To (${toInvoiceCount})" parameter-map="[toPartyId:partyId]" condition="toInvoiceCount"/>
         <link url="findPayment" text="Payments From (${fromPaymentCount})" parameter-map="[fromPartyId:partyId]" condition="fromPaymentCount"/>
 
@@ -294,18 +303,21 @@ along with this software (see the LICENSE.md file). If not, see
             <form-list name="OrderList" list="orderList" skip-form="true">
                 <entity-find entity-name="mantle.order.OrderHeaderAndPart" list="orderList">
                     <econdition field-name="customerPartyId" from="partyId"/>
-                    <econdition field-name="statusId" operator="in" value="OrderPlaced,OrderProcessing,OrderApproved,OrderSent"/>
+                    <!-- Aspen card 1131: open sales orders = Placed; a cancelled part on a live order is not current -->
+                    <econdition field-name="statusId" operator="in" from="salesStatusInfo.openStatusIdList"/>
+                    <econdition field-name="partStatusId" operator="not-equals" value="OrderCancelled"/>
                     <select-field field-name="orderPartSeqId"/>
                     <order-by field-name="placedDate"/>
                 </entity-find>
 
                 <field name="orderId"><default-field title="Order">
-                    <link text="${orderId}:${orderPartSeqId}" url="orderDetail" link-type="anchor" condition="orderId"/></default-field></field>
+                    <link text="${orderId}:${orderPartSeqId}" url="salesOrderDetail" link-type="anchor" condition="orderId"/></default-field></field>
                 <field name="otherPartyOrderId"><default-field title="PO #"><display/></default-field></field>
                 <field name="placedDate"><default-field><display format="yyyy-MM-dd"/></default-field></field>
                 <field name="shipBeforeDate"><default-field title="Ship Before"><display format="yyyy-MM-dd"/></default-field></field>
 
-                <field name="statusId"><default-field title="Status"><display-entity entity-name="moqui.basic.StatusItem"/></default-field></field>
+                <!-- Aspen card 1128: these are sales orders (party is the customer), so show the sales status label -->
+                <field name="statusId"><default-field title="Status"><display text="${salesStatusInfo.statusLabelMap[statusId] ?: statusId}"/></default-field></field>
                 <field name="facilityId"><default-field title="Facility">
                     <display-entity entity-name="mantle.facility.Facility" text="FacilityNameTemplate"/></default-field></field>
                 <field name="productStoreId"><default-field title="Store"><display-entity entity-name="mantle.product.store.ProductStore"
