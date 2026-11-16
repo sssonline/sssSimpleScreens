@@ -410,14 +410,14 @@ along with this software (see the LICENSE.md file). If not, see
 
                 <field-row-big title="Address 1"><field-ref name="address1"/><field-ref name="unitNumber"/></field-row-big>
                 <field-ref name="address2"/>
-                <field-row-big title="City/Zip"><field-ref name="city"/>
+                <field-row-big title="City/Zip" tooltip="City, zip or postal code, and the optional zip extension."><field-ref name="city"/>
                     <field-ref name="postalCode"/><field-ref name="postalCodeExt"/></field-row-big>
                 <field-row-big title="Country/State"><field-ref name="countryGeoId"/>
                     <field-ref name="stateProvinceGeoId"/></field-row-big>
 
                 <field-ref name="telecomContactMechPurposeId"/>
                 <field-ref name="telecomContactMechId"/>
-                <field-row-big title="Phone"><field-ref name="countryCode"/><field-ref name="areaCode"/>
+                <field-row-big title="Phone" tooltip="Country code, area code, phone number and extension, in that order."><field-ref name="countryCode"/><field-ref name="areaCode"/>
                     <field-ref name="contactNumber"/><field-ref name="telecomExtension"/></field-row-big>
 
                 <field-ref name="emailContactMechPurposeId"/>
@@ -567,7 +567,7 @@ along with this software (see the LICENSE.md file). If not, see
 
                 <field-row><field-ref name="routingNumber"/><field-ref name="accountNumber"/></field-row>
 
-                <field-row-big title="Card Number"><field-ref name="creditCardTypeEnumId"/>
+                <field-row-big title="Card Number" tooltip="Card type, card number and security code.${paymentMethodId &amp;&amp; ec.user.hasPermission('CARD_NUMBER_EDIT') ? ' Clear the card number to update the other fields without the full card number.' : ''}"><field-ref name="creditCardTypeEnumId"/>
                     <field-ref name="cardNumber"/><field-ref name="validateSecurityCode"/></field-row-big>
                 <field-row-big title="Expire Date"><field-ref name="expireMonth"/>
                     <field-ref name="expireYear"/></field-row-big>
@@ -578,13 +578,13 @@ along with this software (see the LICENSE.md file). If not, see
                 <field-row-big title="Address 1"><field-ref name="address1"/><field-ref name="unitNumber"/></field-row-big>
                 <field-ref name="address2"/>
                 <!-- TODO FUTURE qvt remove field-row-big.@title, use field titles -->
-                <field-row-big title="City/Zip"><field-ref name="city"/>
+                <field-row-big title="City/Zip" tooltip="City, zip or postal code, and the optional zip extension."><field-ref name="city"/>
                     <field-ref name="postalCode"/><field-ref name="postalCodeExt"/></field-row-big>
                 <field-row-big title="Country/State"><field-ref name="countryGeoId"/>
                     <field-ref name="stateProvinceGeoId"/></field-row-big>
                 <field-ref name="telecomContactMechId"/>
                 <!-- TODO FUTURE qvt remove field-row-big.@title, use field titles -->
-                <field-row-big title="Phone"><field-ref name="countryCode"/><field-ref name="areaCode"/>
+                <field-row-big title="Phone" tooltip="Country code, area code and phone number, in that order."><field-ref name="countryCode"/><field-ref name="areaCode"/>
                     <field-ref name="contactNumber"/></field-row-big>
                 <field-ref name="submitButton"/>
             </field-layout>
