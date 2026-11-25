@@ -92,17 +92,13 @@ along with this software (see the LICENSE.md file). If not, see
         <default-response type="none"/>
     </transition>
 
+    <!-- reads the database (card #1342): each word typed must match the task's ID or
+         name, ignoring case; an exact ID returns just that task -->
     <transition name="getTaskList">
         <parameter name="term"/>
         <parameter name="rootWorkEffortId"/>
         <parameter name="assignedPartyId"/>
-        <parameter name="indexName"/>
-        <parameter name="documentType"/>
         <actions>
-            <set field="indexName" from="searchIndexName ?: 'mantle'"/>
-            <set field="documentType" from="searchTaskDocType ?: 'MantleTask'"/>
-            <!-- <log message="====== getTaskList indexName=${indexName}, documentType=${documentType}, term=${term}, rootWorkEffortId=${rootWorkEffortId}"/> -->
-
             <entity-find-one entity-name="mantle.work.effort.WorkEffort" value-field="workEffort">
                 <field-map field-name="workEffortId" from="term"/></entity-find-one>
 
@@ -113,19 +109,21 @@ along with this software (see the LICENSE.md file). If not, see
                 </script>
             </then><else>
                 <script><![CDATA[
-                    StringBuilder termSb = new StringBuilder()
-                    termSb.append(term).append('*')
-                    if (rootWorkEffortId) termSb.append(' AND project:').append(rootWorkEffortId)
-                    if (assignedPartyId) termSb.append(' AND parties.partyId:').append(assignedPartyId)
-                    ]]></script>
-                <service-call name="org.moqui.search.SearchServices.search#DataDocuments" out-map="context"
-                        in-map="[queryString:termSb.toString(), indexName:indexName, documentType:documentType]"/>
-                <script>
+                    def EntityCondition = org.moqui.entity.EntityCondition
+                    def cf = ec.entity.conditionFactory
+                    def ef = ec.entity.find("mantle.work.effort.WorkEffort").condition("workEffortTypeEnumId", "WetTask")
+                    if (rootWorkEffortId) ef.condition("rootWorkEffortId", rootWorkEffortId)
+                    if (assignedPartyId) ef.condition("workEffortId", EntityCondition.IN, ec.entity.find("mantle.work.effort.WorkEffortParty")
+                            .condition("partyId", assignedPartyId).conditionDate("fromDate", "thruDate", ec.user.nowTimestamp)
+                            .selectField("workEffortId").list()*.workEffortId ?: ["_NONE_"])
+                    for (String word in (term ? term.toString().trim().split(/\s+/).findAll { it } : []))
+                        ef.condition(cf.makeCondition(["workEffortId", "workEffortName"].collect {
+                            cf.makeCondition(it, EntityCondition.LIKE, "%" + word + "%").ignoreCase() }, EntityCondition.OR))
+                    ef.selectFields(["workEffortId", "workEffortName"]).orderBy(["^workEffortName", "workEffortId"]).limit(20)
                     def outList = []
-                    for (def document in documentList)
-                        outList.add([value:document._id, label:ec.resource.expand("WorkEffortNameTemplate", "", [workEffortName:document.name,workEffortId:document._id])])
+                    for (def task in ef.list()) outList.add([value:task.workEffortId, label:ec.resource.expand("WorkEffortNameTemplate", "", task)])
                     ec.web.sendJsonResponse(outList)
-                </script>
+                ]]></script>
             </else></if>
         </actions>
         <default-response type="none"/>

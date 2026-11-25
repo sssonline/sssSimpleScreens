@@ -67,7 +67,6 @@ along with this software (see the LICENSE.md file). If not, see
         </box-body><box-body-nopad>
             <form-list name="FieldList" list="ddFieldList" transition="updateDataDocumentField" multi="true"
                     extends="component://tools/screen/System/DataDocument/Edit/DataDocFields/FieldList.xml#FieldList">
-                <field name="sortable"><default-field><ignored/></default-field></field>
             </form-list>
         </box-body-nopad></container-box>
     </widgets>

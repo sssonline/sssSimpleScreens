@@ -17,7 +17,6 @@ along with this software (see the LICENSE.md file). If not, see
 
     <widgets>
         <link url="../Product" text="Products"/>
-        <link url="../Search" text="Search Products"/>
         <link url="../Category" text="Categories"/>
         <link url="../Feature" text="Features"/>
         <link url="../FeatureGroup" text="Feature Groups"/>

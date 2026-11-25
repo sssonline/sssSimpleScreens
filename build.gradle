@@ -48,7 +48,7 @@ test {
     testLogging.showStandardStreams = true; testLogging.showExceptions = true
 
     classpath += files(sourceSets.main.output.classesDirs)
-    // filter out classpath entries that don't exist (gradle adds a bunch of these), or ElasticSearch JarHell will blow up
+    // filter out classpath entries that don't exist (gradle adds a bunch of these)
     classpath = classpath.filter { it.exists() }
 
     beforeTest { descriptor -> logger.lifecycle("Running test: ${descriptor}") }

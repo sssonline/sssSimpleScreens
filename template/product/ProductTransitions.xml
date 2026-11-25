@@ -14,6 +14,11 @@ along with this software (see the LICENSE.md file). If not, see
 -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd">
 
+    <!-- Card #1342: reads the database (it used to resolve only an exact product ID). Each word
+         typed must match the product's ID, pseudo ID or name, ignoring case; an exact product ID or pseudo ID comes
+         first, so a saved value always gets its label. The Product row filters (MANTLE_ACTIVE_ORG / MANTLE_USER_ORG)
+         apply to the find on their own. Returns a bare [{value,label}] list, or {options,pageSize,count} when pageIndex
+         is passed, as before. -->
     <transition name="getProductList">
         <parameter name="term"/>
         <parameter name="productFeatureIds"/>
@@ -22,14 +27,8 @@ along with this software (see the LICENSE.md file). If not, see
         <parameter name="productCategoryIds"/>
         <parameter name="assetTypeEnumId"/>
         <parameter name="assetClassEnumId"/>
-        <parameter name="indexName"/>
-        <parameter name="documentType"/>
         <parameter name="pageIndex"/>
         <actions>
-            <set field="indexName" from="indexName ?: searchIndexName ?: 'mantle'"/>
-            <set field="documentType" from="documentType ?: searchProductDocType ?: 'MantleProduct'"/>
-            <!-- <log message="====== getProductList indexName=${indexName}, documentType=${documentType}, term=${term}"/> -->
-
             <set field="outList" from="[]"/>
 
             <entity-find-one entity-name="mantle.product.Product" value-field="product">
@@ -43,71 +42,55 @@ along with this software (see the LICENSE.md file). If not, see
                     <script>outList.add([value:pseudoProduct.productId, label:ec.resource.expand("ProductNameTemplate", "", pseudoProduct)])</script></if>
             </else></if>
 
-            <!-- if we have activeOrgId or filterOrgIds see if user has active org or user org filters -->
-            <set field="activeOrgId" from="ec.user.context?.activeOrgId"/>
-            <set field="filterOrgIds" from="ec.user.context?.filterOrgIds"/>
-            <set field="findFilters" from="ec.artifactExecution.getFindFiltersForUser('mantle.product.Product')"/>
-            <if condition="findFilters"><set field="entityFilterSetId" from="findFilters[0].entityFilterSetId"/></if>
-            <!-- <log level="warn" message="Doing product search with activeOrgId ${activeOrgId} filterOrgIds ${filterOrgIds} entityFilterSetId ${entityFilterSetId}"/> -->
-
             <script><![CDATA[
-                StringBuilder termSb = new StringBuilder('(')
-                termSb.append(elasticQueryAutoWildcard(term, false)).append(')')
+                def EntityCondition = org.moqui.entity.EntityCondition
+                def cf = ec.entity.conditionFactory
+                int pageSizeInt = pageSize ? (pageSize as int) : 20
+                int pageIndexInt = pageIndex ? (pageIndex as int) : 0
+                Set exactIds = outList.collect { it.value } as Set
+                // the exact match leads the first page only; later pages still leave it out of the word search
+                if (pageIndexInt > 0) outList = []
+
+                def ef = ec.entity.find("mantle.product.Product")
+                if (productTypeEnumId) ef.condition("productTypeEnumId", productTypeEnumId)
+                if (productClassEnumId) ef.condition("productClassEnumId", productClassEnumId)
+                if (assetTypeEnumId) ef.condition("assetTypeEnumId", assetTypeEnumId)
+                if (assetClassEnumId) ef.condition("assetClassEnumId", assetClassEnumId)
+                boolean noMatch = false
                 if (productFeatureIds) {
-                    List productFeatureIdList = productFeatureIds.split(',')
-                    // NOTE: using features.productFeatureId instead of plain productFeatureId as newer ElasticSearch doesn't search in nested fields
-                    termSb.append(' AND features.productFeatureId:')
-                    if (productFeatureIdList.size() > 1) termSb.append('(')
-                    for (int i = 0; i < productFeatureIdList.size(); i++) {
-                        termSb.append(productFeatureIdList.get(i))
-                        if (i < (productFeatureIdList.size() - 1)) termSb.append(' OR ')
-                    }
-                    if (productFeatureIdList.size() > 1) termSb.append(')')
+                    List featureIdList = productFeatureIds.toString().split(',')*.trim().findAll { it }
+                    Set featureProductIds = ec.entity.find("mantle.product.feature.ProductFeatureAppl")
+                            .condition("productFeatureId", EntityCondition.IN, featureIdList).useCache(false)
+                            .conditionDate("fromDate", "thruDate", ec.user.nowTimestamp)
+                            .selectField("productId").list()*.productId as Set
+                    if (featureProductIds) ef.condition("productId", EntityCondition.IN, featureProductIds) else noMatch = true
                 }
                 if (productCategoryIds) {
-                    List productCategoryIdList = productCategoryIds.split(',')
-                    termSb.append(' AND categories.productCategoryId:')
-                    if (productCategoryIdList.size() > 1) termSb.append('(')
-                    for (int i = 0; i < productCategoryIdList.size(); i++) {
-                        termSb.append(productCategoryIdList.get(i))
-                        if (i < (productCategoryIdList.size() - 1)) termSb.append(' OR ')
-                    }
-                    if (productCategoryIdList.size() > 1) termSb.append(')')
+                    List categoryIdList = productCategoryIds.toString().split(',')*.trim().findAll { it }
+                    Set categoryProductIds = ec.entity.find("mantle.product.category.ProductCategoryMember")
+                            .condition("productCategoryId", EntityCondition.IN, categoryIdList).useCache(false)
+                            .conditionDate("fromDate", "thruDate", ec.user.nowTimestamp)
+                            .selectField("productId").list()*.productId as Set
+                    if (categoryProductIds) ef.condition("productId", EntityCondition.IN, categoryProductIds) else noMatch = true
                 }
-                if (productTypeEnumId) termSb.append(' AND productTypeEnumId:').append(productTypeEnumId)
-                if (productClassEnumId) termSb.append(' AND productClassEnumId:').append(productClassEnumId)
-                if (assetTypeEnumId) termSb.append(' AND assetTypeEnumId:').append(assetTypeEnumId)
-                if (assetClassEnumId) termSb.append(' AND assetClassEnumId:').append(assetClassEnumId)
-
-                if ('MANTLE_USER_ORG'.equals(entityFilterSetId)) {
-                    termSb.append(' AND ownerPartyId:(' + filterOrgIds.join(' OR ') + ')')
-                } else if ('MANTLE_ACTIVE_ORG'.equals(entityFilterSetId) && activeOrgId) {
-                    termSb.append(' AND ownerPartyId:(' + activeOrgId + ' OR _NA_)')
+                List termWords = term ? term.toString().trim().split(/\s+/).findAll { it } : []
+                for (String word in termWords) {
+                    String like = "%" + word + "%"
+                    ef.condition(cf.makeCondition(["productId", "pseudoId", "productName"].collect {
+                        cf.makeCondition(it, EntityCondition.LIKE, like).ignoreCase() }, EntityCondition.OR))
                 }
-            ]]></script>
-            <!-- <log level="warn" message="Doing product search with queryString [${termSb.toString()}], indexName:${indexName}, documentType:${documentType}"/> -->
-            <!--
-                NOTE: can't order by pseudoId now that it is a 'text' type in ES instead of 'keyword', commenting as a temporary workaround, error message suggests fix:
-                "Fielddata is disabled on text fields by default. Set fielddata=true on [pseudoId] in order to load fielddata in memory by uninverting the inverted index. Note that this can however use significant memory. Alternatively use a keyword field instead."
+                if (exactIds) ef.condition("productId", EntityCondition.NOT_IN, exactIds)
+                ef.selectFields(["productId", "pseudoId", "productName"]).orderBy(["pseudoId", "productId"])
 
-                A better approach would be to use a text field + a keyword field as suggested here: https://www.elastic.co/guide/en/elasticsearch/reference/current/fielddata.html
-                Which should be primary and secondary, ie pseudoId + pseudoId.keyword (field specific search easier)
-                    OR pseudoId + pseudoId.text (order by easier, search by field tougher but search on all fields doesn't matter)?
-
-                Without this seems to come back in reasonable order anyway, maybe not bother with explicit order by?
-
-                <set field="orderByFields" from="term ? null : ['pseudoId']"/>
-            -->
-            <service-call name="org.moqui.search.SearchServices.search#DataDocuments" out-map="context" ignore-error="true"
-                    in-map="[queryString:termSb.toString(), indexName:indexName, documentType:documentType,
-                        orderByFields:orderByFields, pageIndex:pageIndex, pageSize:(pageSize?:20)]"/>
-            <!-- <log level="warn" message="Got product search results: ${documentList}"/> -->
-            <script>
-                for (document in documentList) outList.add([value:document._id, label:ec.resource.expand("ProductNameTemplate", "", [productName:document.name,productId:document._id,pseudoId:document.pseudoId])])
-                if (pageIndex) ec.web.sendJsonResponse([options:outList, pageSize:documentListPageSize, count:documentListCount])
+                long productCount = 0
+                if (!noMatch) {
+                    productCount = ef.count()
+                    ef.offset(pageIndexInt * pageSizeInt).limit(pageSizeInt)
+                    for (prod in ef.list()) outList.add([value:prod.productId, label:ec.resource.expand("ProductNameTemplate", "", prod)])
+                }
+                if (pageIndex) ec.web.sendJsonResponse([options:outList, pageSize:pageSizeInt, count:(productCount + exactIds.size())])
                 else ec.web.sendJsonResponse(outList)
-            </script>
-            <!-- <log level="warn" message="Got product search outList: ${outList}"/> -->
+            ]]></script>
         </actions>
         <default-response type="none"/>
     </transition>

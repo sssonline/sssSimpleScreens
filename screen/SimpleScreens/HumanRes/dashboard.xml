@@ -16,10 +16,6 @@ along with this software (see the LICENSE.md file). If not, see
         default-menu-title="HR Dashboard" default-menu-index="1">
 
     <widgets>
-        <link url="//${appRoot}/Party/FindParty" text="Employees" parameter-map="[roleTypeId:'Employee']"/>
-        <!-- maybe, if we use Contractor here should also add to RgpDirect role group, and consider in other HR and Payroll code:
-            <link url="//${appRoot}/Party/FindParty" text="Contractors" parameter-map="[roleTypeId:'Contractor']"/> -->
-
         <link url="../EditRateAmounts" text="Labor Rates"/>
     </widgets>
 </screen>

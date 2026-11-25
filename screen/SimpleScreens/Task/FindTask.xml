@@ -85,41 +85,18 @@ along with this software (see the LICENSE.md file). If not, see
                 <select-field field-name="estimatedCompletionDate,estimatedWorkTime,remainingWorkTime,actualWorkTime,lastUpdatedStamp"/>
             </entity-find>
         </then><else>
-            <!-- DataDocument (ElasticSearch) search plus DB query -->
-            <set field="searchInputs" from="new HashMap(ec.web.parameters)"/>
-            <if condition="rootWorkEffortId">
-                <set field="queryString" value="${queryString} AND project:${rootWorkEffortId}"/>
-                <set field="searchInputs.rootWorkEffortId" value=""/>
-            </if>
-            <if condition="parentWorkEffortId">
-                <set field="queryString" value="${queryString} AND parent:${parentWorkEffortId}"/>
-                <set field="searchInputs.parentWorkEffortId" value=""/>
-            </if>
-            <!-- TODO: support not, contains/etc, not ignore case? -->
-            <if condition="workEffortId">
-                <set field="queryString" value="${queryString} AND workEffortId:${workEffortId}"/>
-                <set field="searchInputs.workEffortId" value=""/>
-            </if>
-            <if condition="purposeEnumId">
-                <set field="queryString" value="${queryString} AND purposeEnumId:${purposeEnumId}"/>
-                <set field="searchInputs.purposeEnumId" value=""/>
-            </if>
-            <if condition="statusId">
-                <set field="queryString" value="${queryString} AND statusId:${statusId}"/>
-                <set field="searchInputs.statusId" value=""/>
-            </if>
-            <if condition="resolutionEnumId">
-                <set field="queryString" value="${queryString} AND resolutionEnumId:${resolutionEnumId}"/>
-                <set field="searchInputs.resolutionEnumId" value=""/>
-            </if>
-
-            <service-call name="org.moqui.search.SearchServices.search#DataDocuments" out-map="context"
-                    in-map="context + [indexName:'mantle', documentType:'MantleTask']"/>
-
-            <set field="workEffortIdList" from="documentList._id"/>
+            <!-- free-text search on the database (card #1342): each word must appear in
+                 the task's ID or name, ignoring case -->
+            <script><![CDATA[
+                def EntityCondition = org.moqui.entity.EntityCondition
+                def cf = ec.entity.conditionFactory
+                queryCondition = cf.makeCondition(queryString.toString().trim().split(/\s+/).findAll { it }.collect { String word ->
+                    cf.makeCondition(["workEffortId", "workEffortName"].collect {
+                        cf.makeCondition(it, EntityCondition.LIKE, "%" + word + "%").ignoreCase() }, EntityCondition.OR) })
+            ]]></script>
             <entity-find entity-name="mantle.work.effort.PartyTaskSummary" list="taskList">
-                <search-form-inputs default-order-by="priority,workEffortId" input-fields-map="searchInputs"/>
-                <econdition field-name="workEffortId" operator="in" from="workEffortIdList"/>
+                <search-form-inputs default-order-by="priority,workEffortId"/>
+                <econdition-object field="queryCondition"/>
                 <econdition field-name="rootWorkEffortId" operator="in" from="myProjectIds" or-null="true"/><!-- only tasks in allowed projects -->
                 <econdition field-name="workEffortTypeEnumId" value="WetTask"/>
                 <select-field field-name="rootWorkEffortId,milestoneWorkEffortId,parentWorkEffortId,workEffortId"/>

@@ -96,7 +96,6 @@ along with this software (see the LICENSE.md file). If not, see
             </box-body></container-box>
             <container-box><box-header title="Sales and Invoice Reports"/><box-body>
                 <container>
-                    <link url="../SalesSummary" text="Sales Summary"/>
                     <link url="../SalesAnalysis" text="Sales Order Analysis"/>
                     <link url="../SalesInvoiceAnalysis" text="Sales Invoice Analysis"/>
 <!--                    <container-dialog id="CustomerStatementDialog" button-text="Customer Statement PDF">-->

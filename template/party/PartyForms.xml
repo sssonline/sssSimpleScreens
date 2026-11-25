@@ -57,22 +57,19 @@ along with this software (see the LICENSE.md file). If not, see
         </actions>
         <default-response type="none"/>
     </transition>
+    <!-- Card #1342: reads the database. Each word typed must match the party's ID,
+         organization name, first name or last name, ignoring case; an exact party ID returns just that party. The
+         Party row filters (MANTLE_ACTIVE_ORG / MANTLE_USER_ORG) apply to the find on their own. Still a bare
+         [{value,label}] list, which every including screen's drop-down expects. -->
     <transition name="searchPartyList">
         <parameter name="term"/>
         <parameter name="roleTypeId"/>
-        <parameter name="indexName"/>
-        <parameter name="documentType"/>
         <parameter name="partyTypeEnumId"/>
         <parameter name="includeDisabled"/> <!-- 'true' includes disabled -->
-        <parameter name="restrictActiveOrg"/> <!-- !'true' restricts to active org (only if present) -->
+        <parameter name="restrictActiveOrg"/> <!-- 'true' restricts to the active org itself (only if present) -->
         <parameter name="pageIndex"/>
         <actions>
             <if condition="!term &amp;&amp; !pageIndex"><script>ec.web.sendJsonResponse([])</script><return/></if>
-            <set field="term" from="term ?: '*'"/>
-
-            <set field="indexName" from="indexName ?: searchIndexName ?: 'mantle'"/>
-            <set field="documentType" from="documentType ?: searchPartyDocType ?: 'MantleParty'"/>
-            <!-- <log message="====== searchPartyList indexName=${indexName}, documentType=${documentType}, term=${term}"/> -->
 
             <entity-find-one entity-name="mantle.party.PartyDetail" value-field="partyDetail">
                 <field-map field-name="partyId" from="term"/></entity-find-one>
@@ -83,38 +80,35 @@ along with this software (see the LICENSE.md file). If not, see
                     ec.web.sendJsonResponse(outList)
                 </script>
             </then><else>
-                <!-- if we have activeOrgId or filterOrgIds see if user has active org or user org filters -->
                 <set field="activeOrgId" from="ec.user.context?.activeOrgId"/>
-                <set field="filterOrgIds" from="ec.user.context?.filterOrgIds"/>
-                <set field="findFilters" from="ec.artifactExecution.getFindFiltersForUser('mantle.party.Party')"/>
-                <if condition="findFilters"><set field="entityFilterSetId" from="findFilters[0].entityFilterSetId"/></if>
-                <!-- <log level="warn" message="Doing party search with activeOrgId ${activeOrgId} filterOrgIds ${filterOrgIds} entityFilterSetId ${entityFilterSetId}"/> -->
-
+                <set field="roleTypeIdList" from="roleTypeId ? roleTypeId.toString().split(',')*.trim().findAll { it } : null"/>
+                <set field="termWords" from="term ? term.toString().trim().split(/\s+/).findAll { it } : []"/>
                 <script><![CDATA[
-                    StringBuilder termSb = new StringBuilder('(')
-                    termSb.append(elasticQueryAutoWildcard(term, false)).append(')')
-
-                    if (roleTypeId) termSb.append(' AND roles.roleTypeId:(').append(roleTypeId.replaceAll(/,/, ' OR ')).append(')')
-                    if (partyTypeEnumId) termSb.append(' AND (partyTypeEnumId:' + partyTypeEnumId + ')')
-                    if (!'true'.equals(includeDisabled)) termSb.append(' AND (NOT disabled:Y)')
-                    if (activeOrgId && 'true'.equals(restrictActiveOrg)) termSb.append(' AND (partyId:' + activeOrgId + ')')
-
-                    if ('MANTLE_USER_ORG'.equals(entityFilterSetId)) {
-                        termSb.append(' AND ownerPartyId:(' + (filterOrgIds ? filterOrgIds.join(' OR ') + ' OR ' : '') + '_NA_)')
-                    } else if ('MANTLE_ACTIVE_ORG'.equals(entityFilterSetId) && activeOrgId) {
-                        termSb.append(' AND ownerPartyId:(' + activeOrgId + ' OR _NA_)')
+                    def EntityCondition = org.moqui.entity.EntityCondition
+                    def ef = ec.entity.find(roleTypeIdList ? "mantle.party.PartyDetailAndRole" : "mantle.party.PartyDetail")
+                    if (roleTypeIdList) ef.condition("roleTypeId", EntityCondition.IN, roleTypeIdList)
+                    if (partyTypeEnumId) ef.condition("partyTypeEnumId", partyTypeEnumId)
+                    if (!'true'.equals(includeDisabled)) ef.condition(ec.entity.conditionFactory.makeCondition([
+                            ec.entity.conditionFactory.makeCondition("disabled", EntityCondition.EQUALS, null),
+                            ec.entity.conditionFactory.makeCondition("disabled", EntityCondition.NOT_EQUAL, "Y")], EntityCondition.OR))
+                    if (activeOrgId && 'true'.equals(restrictActiveOrg)) ef.condition("partyId", activeOrgId)
+                    for (String word in termWords) {
+                        String like = "%" + word + "%"
+                        ef.condition(ec.entity.conditionFactory.makeCondition(["partyId", "pseudoId", "organizationName", "firstName", "lastName"].collect {
+                            ec.entity.conditionFactory.makeCondition(it, EntityCondition.LIKE, like).ignoreCase() }, EntityCondition.OR))
                     }
-                ]]></script>
-                <!-- <log level="warn" message="Doing party search with queryString [${termSb.toString()}], indexName:${indexName}, documentType:${documentType}"/> -->
-                <service-call name="org.moqui.search.SearchServices.search#DataDocuments" out-map="context"
-                        in-map="[queryString:termSb.toString(), indexName:indexName, documentType:documentType]"/>
-                <!-- <log level="warn" message="Got party search results: ${documentList}"/> -->
-                <script>
+                    ef.selectFields(["partyId", "pseudoId", "organizationName", "firstName", "lastName"])
+                    // no distinct: Postgres refuses ORDER BY UPPER(...) on a DISTINCT select; a party holding two of the
+                    // roles asked for comes back twice and is dropped below
+                    ef.orderBy(["^organizationName", "^lastName", "^firstName", "partyId"])
+                    int pageIndexInt = pageIndex ? (pageIndex as int) : 0
+                    ef.offset(pageIndexInt * 20).limit(20)
                     def outList = []
-                    for (document in documentList) outList.add([value:document._id, label:ec.resource.expand("PartyNameTemplate", "", document)])
+                    Set seenIds = new HashSet()
+                    for (party in ef.list()) if (seenIds.add(party.partyId))
+                        outList.add([value:party.partyId, label:ec.resource.expand("PartyNameTemplate", "", party)])
                     ec.web.sendJsonResponse(outList)
-                </script>
-                <!-- <log level="warn" message="Got party search outList: ${outList}"/> -->
+                ]]></script>
             </else></if>
         </actions>
         <default-response type="none"/>
